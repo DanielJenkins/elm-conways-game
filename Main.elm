@@ -6,12 +6,9 @@ import ConwaysGame exposing (..)
 
 main : Program Never
 main =
-    Html.App.beginnerProgram
-        { model = ConwaysGame.init ( 100, 100 )
+    Html.App.program
+        { init = ( ConwaysGame.initialModel ( 20, 20 ), Cmd.none )
+        , subscriptions = ConwaysGame.subscriptions
         , update = ConwaysGame.update
         , view = ConwaysGame.view
         }
-
-
-
---Use elm.app.program

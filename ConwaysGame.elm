@@ -1,4 +1,4 @@
-module ConwaysGame exposing (Model, init, update, subscriptions, view)
+module ConwaysGame exposing (Model, initialModel, update, subscriptions, view)
 
 import Dict exposing (Dict)
 import Html exposing (..)
@@ -25,11 +25,11 @@ type alias Model =
     }
 
 
-init : ( Int, Int ) -> Model
-init ( x, y ) =
+initialModel : ( Int, Int ) -> Model
+initialModel ( x, y ) =
     { width = x
     , height = y
-    , frame = matrix y x (\location -> Dead)
+    , frame = matrix (y + 1) (x + 1) (\_ -> Dead)
     , ticking = False
     }
 
@@ -42,42 +42,59 @@ type Msg
     = FlipTicking
     | Reset
     | Tick Time
+    | ToggleLifeForce Location
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
+    case Debug.log "msg" msg of
         FlipTicking ->
-            { model | ticking = not model.ticking }
+            ( { model | ticking = not model.ticking }, Cmd.none )
 
         Reset ->
-            --            init
-            model
+            ( { model
+                | frame = Matrix.map (\_ -> Dead) model.frame
+                , ticking = not model.ticking
+              }
+            , Cmd.none
+            )
+
+        ToggleLifeForce location ->
+            ( { model | frame = Matrix.update location (\_ -> newLifeForce location model.frame) model.frame }, Cmd.none )
 
         Tick newTime ->
             if model.ticking then
-                nextModel model
+                ( { model | frame = nextFrame model.frame }, Cmd.none )
             else
-                model
+                ( model, Cmd.none )
 
 
-nextModel : Model -> Model
-nextModel model =
-    { model | frame = nextFrame model.frame }
+newLifeForce : Location -> Matrix LifeForce -> LifeForce
+newLifeForce location frame =
+    toggleLifeForce (Matrix.get location frame)
+
+
+toggleLifeForce : Maybe LifeForce -> LifeForce
+toggleLifeForce oldLifeForce =
+    case oldLifeForce of
+        Just Alive ->
+            Dead
+
+        Just Dead ->
+            Alive
+
+        Nothing ->
+            Dead
 
 
 nextFrame : Matrix LifeForce -> Matrix LifeForce
 nextFrame oldFrame =
-    let
-        f location element =
-            checkForLife oldFrame location element
-    in
-        Matrix.mapWithLocation f oldFrame
+    Matrix.mapWithLocation (\location element -> checkForLife oldFrame location element) oldFrame
 
 
 checkForLife : Matrix LifeForce -> Location -> LifeForce -> LifeForce
 checkForLife oldFrame ( x, y ) element =
-    element
+    toggleLifeForce (Just element)
 
 
 
@@ -101,24 +118,20 @@ checkForLife oldFrame ( x, y ) element =
 --Any live cell with two or three live neighbours lives on to the next generation.
 --Any live cell with more than three live neighbours dies, as if by over-population.
 --Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-
-
-fewerThanTwoLiveNeighbors : Dict -> Point -> Bool
-fewerThanTwoLiveNeighbors oldDict ( x, y ) =
-    False
-
-
-moreThanThreeLiveNeighbors : Dict -> Point -> Bool
-moreThanThreeLiveNeighbors oldDict ( x, y ) =
-    False
-
-
-exactlyThreeLiveNeighbors : Dict -> Point -> Bool
-exactlyThreeLiveNeighbors oldDict ( x, y ) =
-    False
-
-
-
+--
+--fewerThanTwoLiveNeighbors : LifeForce -> Point -> LifeForce
+--fewerThanTwoLiveNeighbors oldDict ( x, y ) =
+--    False
+--
+--
+--moreThanThreeLiveNeighbors : LifeForce -> Point -> LifeForce
+--moreThanThreeLiveNeighbors oldDict ( x, y ) =
+--    False
+--
+--
+--exactlyThreeLiveNeighbors : LifeForce -> Point -> LifeForce
+--exactlyThreeLiveNeighbors oldDict ( x, y ) =
+--    False
 -- Subscriptions
 
 
@@ -139,19 +152,19 @@ view model =
             , button [ onClick Reset ] [ text "Reset" ]
             ]
         , div
-            [ style [ ( "padding", "8px" ) ] ]
+            []
             (List.map (viewRow model) [0..model.height])
         ]
 
 
-viewRow : Model -> Int -> Html msg
+viewRow : Model -> Int -> Html Msg
 viewRow model row =
     div
-        [ style [ ( "height", "3px" ) ] ]
+        [ style [ ( "height", "12px" ) ] ]
         (List.map (viewCell model row) [0..model.width])
 
 
-viewCell : Model -> Int -> Int -> Html msg
+viewCell : Model -> Int -> Int -> Html Msg
 viewCell model row col =
     let
         color =
@@ -166,11 +179,13 @@ viewCell model row col =
                     "black"
     in
         div
-            [ style
-                [ ( "width", "3px" )
-                , ( "height", "3px" )
+            [ onClick (ToggleLifeForce ( col, row ))
+            , style
+                [ ( "width", "10px" )
+                , ( "height", "10px" )
                 , ( "background-color", color )
                 , ( "display", "inline-block" )
+                , ( "border", "1px grey solid" )
                 ]
             ]
             []
