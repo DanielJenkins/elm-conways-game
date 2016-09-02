@@ -40,7 +40,7 @@ initialModel ( x, y ) =
 
 type Msg
     = FlipTicking
-    | Reset
+    | Clear
     | Tick Time
     | ToggleLifeForce Location
 
@@ -49,24 +49,39 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case Debug.log "msg" msg of
         FlipTicking ->
-            ( { model | ticking = not model.ticking }, Cmd.none )
-
-        Reset ->
             ( { model
-                | frame = Matrix.map (\_ -> Dead) model.frame
-                , ticking = not model.ticking
+                | ticking = not model.ticking
               }
             , Cmd.none
             )
 
+        Clear ->
+            ( { model
+                | frame = Matrix.map (\_ -> Dead) model.frame
+                , ticking = False
+              }
+            , Cmd.none
+            )
+
+        --TODO: Refactor this?
         ToggleLifeForce location ->
-            ( { model | frame = Matrix.update location (\_ -> newLifeForce location model.frame) model.frame }, Cmd.none )
+            ( { model
+                | frame = Matrix.update location (\_ -> newLifeForce location model.frame) model.frame
+              }
+            , Cmd.none
+            )
 
         Tick newTime ->
             if model.ticking then
-                ( { model | frame = nextFrame model.frame }, Cmd.none )
+                ( { model
+                    | frame = nextFrame model.frame
+                  }
+                , Cmd.none
+                )
             else
-                ( model, Cmd.none )
+                ( model
+                , Cmd.none
+                )
 
 
 newLifeForce : Location -> Matrix LifeForce -> LifeForce
@@ -88,50 +103,62 @@ toggleLifeForce oldLifeForce =
 
 
 nextFrame : Matrix LifeForce -> Matrix LifeForce
-nextFrame oldFrame =
-    Matrix.mapWithLocation (\location element -> checkForLife oldFrame location element) oldFrame
+nextFrame frame =
+    Matrix.mapWithLocation (\location element -> checkForLife frame location element) frame
 
 
 checkForLife : Matrix LifeForce -> Location -> LifeForce -> LifeForce
-checkForLife oldFrame ( x, y ) element =
-    toggleLifeForce (Just element)
+checkForLife frame location lifeForce =
+    let
+        liveNeighbors =
+            countLiveNeighbors frame location
+    in
+        if lifeForce == Alive then
+            if liveNeighbors < 2 then
+                --Any live cell with fewer than two live neighbours dies
+                Dead
+            else if liveNeighbors > 3 then
+                --Any live cell with more than three live neighbours dies
+                Dead
+                --Any live cell with two or three live neighbours lives on
+            else
+                Alive
+        else if liveNeighbors == 3 then
+            --Any dead cell with exactly three live neighbours becomes a live cell
+            Alive
+        else
+            Dead
+
+
+countLiveNeighbors : Matrix LifeForce -> Location -> Int
+countLiveNeighbors frame ( x, y ) =
+    let
+        neighborLocations =
+            [ ( x + 1, y + 1 )
+            , ( x + 1, y - 1 )
+            , ( x + 1, y )
+            , ( x - 1, y + 1 )
+            , ( x - 1, y - 1 )
+            , ( x - 1, y )
+            , ( x, y + 1 )
+            , ( x, y - 1 )
+            ]
+    in
+        let
+            listOfNums =
+                List.map
+                    (\location ->
+                        if Matrix.get (location) frame == Just Alive then
+                            1
+                        else
+                            0
+                    )
+                    neighborLocations
+        in
+            List.foldr (+) 0 listOfNums
 
 
 
---    let
---        newFrame =
---            matrix Matrix.rowCount oldFrame Matrix.colCount oldFrame (\location -> False)
---    in
---        newFrame
---    if alive then
---        if fewerThanTwoLiveNeighbors oldDict ( x, y ) then
---            Nothing
---        else if moreThanThreeLiveNeighbors oldDict ( x, y ) then
---            Nothing
---        else
---            Just ( x, y )
---    else if exactlyThreeLiveNeighbors oldDict ( x, y ) then
---        Just ( x, y )
---    else
---        Nothing
---Any live cell with fewer than two live neighbours dies, as if caused by under-population.
---Any live cell with two or three live neighbours lives on to the next generation.
---Any live cell with more than three live neighbours dies, as if by over-population.
---Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
---
---fewerThanTwoLiveNeighbors : LifeForce -> Point -> LifeForce
---fewerThanTwoLiveNeighbors oldDict ( x, y ) =
---    False
---
---
---moreThanThreeLiveNeighbors : LifeForce -> Point -> LifeForce
---moreThanThreeLiveNeighbors oldDict ( x, y ) =
---    False
---
---
---exactlyThreeLiveNeighbors : LifeForce -> Point -> LifeForce
---exactlyThreeLiveNeighbors oldDict ( x, y ) =
---    False
 -- Subscriptions
 
 
@@ -149,7 +176,7 @@ view model =
     div []
         [ div []
             [ button [ onClick FlipTicking ] [ text "Start/Stop" ]
-            , button [ onClick Reset ] [ text "Reset" ]
+            , button [ onClick Clear ] [ text "Clear" ]
             ]
         , div
             []
