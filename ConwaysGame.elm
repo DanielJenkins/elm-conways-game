@@ -4,7 +4,7 @@ import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Events exposing (..)
 import Html.Attributes exposing (..)
-import Time exposing (Time, second)
+import Time exposing (Time, millisecond)
 import Matrix exposing (..)
 
 
@@ -22,6 +22,9 @@ type alias Model =
     , height : Int
     , frame : Matrix LifeForce
     , ticking : Bool
+    , isWon : Bool
+    , score : Int
+    , highScore : Int
     }
 
 
@@ -31,6 +34,9 @@ initialModel ( x, y ) =
     , height = y
     , frame = matrix (y + 1) (x + 1) (\_ -> Dead)
     , ticking = False
+    , isWon = False
+    , score = 0
+    , highScore = 0
     }
 
 
@@ -47,7 +53,7 @@ type Msg
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case Debug.log "msg" msg of
+    case msg of
         FlipTicking ->
             ( { model
                 | ticking = not model.ticking
@@ -59,34 +65,54 @@ update msg model =
             ( { model
                 | frame = Matrix.map (\_ -> Dead) model.frame
                 , ticking = False
+                , isWon = False
+                , score = 0
               }
             , Cmd.none
             )
 
-        --TODO: Refactor this?
         ToggleLifeForce location ->
             ( { model
-                | frame = Matrix.update location (\_ -> newLifeForce location model.frame) model.frame
+                | frame =
+                    Matrix.set
+                        location
+                        (toggleLifeForce (Matrix.get location model.frame))
+                        model.frame
               }
             , Cmd.none
             )
 
         Tick newTime ->
             if model.ticking then
-                ( { model
-                    | frame = nextFrame model.frame
-                  }
-                , Cmd.none
-                )
+                let
+                    nextFrame =
+                        generateNextFrame model.frame
+
+                    nextFrameHasLive =
+                        checkForWin nextFrame
+
+                    nextScore =
+                        updateScore model.score nextFrameHasLive
+                in
+                    ( { model
+                        | isWon = nextFrameHasLive
+                        , frame = nextFrame
+                        , score = nextScore
+                        , highScore = updateHighScore model.highScore nextScore
+                        , ticking =
+                            if ((Matrix.flatten nextFrame) == (Matrix.flatten model.frame)) then
+                                False
+                            else if nextFrameHasLive then
+                                model.ticking
+                            else
+                                False
+                      }
+                    , Cmd.none
+                    )
             else
                 ( model
                 , Cmd.none
                 )
-
-
-newLifeForce : Location -> Matrix LifeForce -> LifeForce
-newLifeForce location frame =
-    toggleLifeForce (Matrix.get location frame)
 
 
 toggleLifeForce : Maybe LifeForce -> LifeForce
@@ -102,8 +128,8 @@ toggleLifeForce oldLifeForce =
             Dead
 
 
-nextFrame : Matrix LifeForce -> Matrix LifeForce
-nextFrame frame =
+generateNextFrame : Matrix LifeForce -> Matrix LifeForce
+generateNextFrame frame =
     Matrix.mapWithLocation (\location element -> checkForLife frame location element) frame
 
 
@@ -145,7 +171,7 @@ countLiveNeighbors frame ( x, y ) =
             ]
     in
         let
-            listOfNums =
+            listOfLifeForces =
                 List.map
                     (\location ->
                         if Matrix.get (location) frame == Just Alive then
@@ -155,7 +181,35 @@ countLiveNeighbors frame ( x, y ) =
                     )
                     neighborLocations
         in
-            List.foldr (+) 0 listOfNums
+            List.foldr (+) 0 listOfLifeForces
+
+
+checkForWin : Matrix LifeForce -> Bool
+checkForWin frame =
+    let
+        flatFrame =
+            Matrix.flatten frame
+    in
+        if List.length (List.filter (\lifeForce -> lifeForce == Alive) flatFrame) > 0 then
+            True
+        else
+            False
+
+
+updateScore : Int -> Bool -> Int
+updateScore score nextFrameHasLive =
+    if nextFrameHasLive then
+        score + 1
+    else
+        score
+
+
+updateHighScore : Int -> Int -> Int
+updateHighScore highScore nextScore =
+    if nextScore > highScore then
+        nextScore
+    else
+        highScore
 
 
 
@@ -164,7 +218,7 @@ countLiveNeighbors frame ( x, y ) =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Time.every second Tick
+    Time.every (500 * millisecond) Tick
 
 
 
@@ -175,12 +229,29 @@ view : Model -> Html Msg
 view model =
     div []
         [ div []
-            [ button [ onClick FlipTicking ] [ text "Start/Stop" ]
-            , button [ onClick Clear ] [ text "Clear" ]
+            [ button
+                [ onClick FlipTicking ]
+                [ text "Start/Stop" ]
+            , button
+                [ onClick Clear ]
+                [ text "New Game" ]
+            , div
+                []
+                [ text ("This Game's Score: " ++ toString model.score ++ " -- High Score: " ++ toString model.highScore) ]
             ]
         , div
             []
             (List.map (viewRow model) [0..model.height])
+        , div []
+            [ text
+                (if model.isWon then
+                    "There's Life!"
+                 else if model.score > 0 then
+                    "Everything is Dead :("
+                 else
+                    ""
+                )
+            ]
         ]
 
 
